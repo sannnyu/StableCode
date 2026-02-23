@@ -1,0 +1,67 @@
+Sub ConvertToRealDateValue()
+
+    Dim cell As Range
+    Dim selectedRange As Range
+    Dim dateParts As Variant
+    Dim dayPart As String, monthPart As String, yearPart As String
+    Dim tempValue As String
+    Dim finalDate As Variant ' 使用 Variant 来存储日期对象
+    
+    ' 目标显示格式
+    Const DISPLAY_FORMAT As String = "yyyy/m/dd"
+    
+    If Selection.Count = 0 Then
+        MsgBox "请先选择需要转换的单元格。", vbExclamation, "未选择单元格"
+        Exit Sub
+    End If
+    
+    Set selectedRange = Selection
+
+    ' 遍历选中的每一个单元格
+    For Each cell In selectedRange
+        On Error GoTo NextCell_Error
+        finalDate = Empty
+
+        If Not IsEmpty(cell.Value) Then
+            ' 1. 预处理：统一替换分隔符
+            tempValue = CStr(cell.Value)
+            tempValue = Replace(tempValue, ".", "-")
+            tempValue = Replace(tempValue, "/", "-")
+            
+            ' 2. 识别并转换为日期对象
+            If IsDate(tempValue) Then
+                ' 标准格式识别
+                finalDate = CDate(tempValue)
+            ElseIf InStr(tempValue, "月") > 0 And InStr(tempValue, "-") > 0 Then
+                ' 特殊格式识别 (如 25-5月-2019)
+                dateParts = Split(tempValue, "-")
+                If UBound(dateParts) >= 2 Then
+                    dayPart = Trim(dateParts(0))
+                    monthPart = Replace(Trim(dateParts(1)), "月", "")
+                    yearPart = Trim(dateParts(2))
+                    finalDate = DateSerial(CInt(yearPart), CInt(monthPart), CInt(dayPart))
+                End If
+            End If
+
+            ' 3. 写入单元格
+            If Not IsEmpty(finalDate) Then
+                ' 先清除可能的文本格式，设为常规
+                cell.NumberFormat = "General"
+                ' 写入真正的日期值（Excel 内部是数字）
+                cell.Value = finalDate
+                ' 设置显示格式
+                cell.NumberFormat = DISPLAY_FORMAT
+            End If
+        End If
+        
+NextCell_Continue:
+        On Error GoTo 0
+    Next cell
+
+    MsgBox "转换完成！已全部转换为标准的日期格式单元格。", vbInformation, "成功"
+    Exit Sub
+
+NextCell_Error:
+    Resume NextCell_Continue
+
+End Sub
