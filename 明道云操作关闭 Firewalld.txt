@@ -1,0 +1,127 @@
+关闭 Firewalld
+
+systemctl stop firewalld && systemctl disable firewalld
+
+关闭 SELinux
+
+setenforce 0
+
+sed -i s/"^SELINUX=.*$"/"SELINUX=disabled"/g /etc/selinux/config
+
+调整 MaxMapCount
+
+sysctl -w vm.max_map_count=262144
+
+grep -q '^vm.max_map_count' /etc/sysctl.conf && sed -i 's/^vm.max_map_count.*/vm.max_map_count=262144/' /etc/sysctl.conf || echo 'vm.max_map_count=262144' >> /etc/sysctl.conf
+
+
+调整 SysFileNr
+
+sysctl -w fs.file-max=2048000
+
+grep -q '^fs.file-max' /etc/sysctl.conf && sed -i 's/^fs.file-max.*/fs.file-max=2048000/' /etc/sysctl.conf || echo 'fs.file-max=2048000' >> /etc/sysctl.conf
+
+
+调整 IPv4Forward
+
+sysctl -w net.ipv4.ip_forward=1
+
+grep -q '^net.ipv4.ip_forward' /etc/sysctl.conf && sed -i 's/^net.ipv4.ip_forward.*/net.ipv4.ip_forward=1/' /etc/sysctl.conf || echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
+
+
+如果操作系统是 Debian 10 以上版本，请先通过 iptables --version 命令检查是否有 iptables；
+
+如果没有 iptables 则需要安装，参考命令如下（需服务器能访问互联网）：
+
+apt-get update
+
+apt install -y iptables
+
+二、Docker 安装
+下载 docker 安装包
+
+服务器支持访问互联网
+服务器不支持访问互联网
+# docker 安装包文件下载链接，下载完成后上传到部署服务器
+https://pdpublic.mingdao.com/private-deployment/offline/common/docker-28.5.2.tgz
+
+解压，并将文件移动到二进制文件目录
+
+tar -zxvf docker-28.5.2.tgz
+
+mv -f docker/* /usr/local/bin/
+
+创建 docker 配置文件
+
+默认 docker 数据目录在 /data/docker，如果需要修改默认数据目录，请修改配置文件中的 data-root 值
+
+mkdir -p  /etc/docker/
+
+cat > /etc/docker/daemon.json <<EOF
+{
+  "registry-mirrors": ["https://uvlkeb6d.mirror.aliyuncs.com"],
+  "data-root": "/data/docker",
+  "max-concurrent-downloads": 10,
+  "exec-opts": ["native.cgroupdriver=cgroupfs"],
+  "storage-driver": "overlay2",
+  "default-address-pools":[{"base":"172.80.0.0/16","size":24}]
+}
+EOF
+
+配置 systemd 管理 docker
+
+cat > /etc/systemd/system/docker.service <<EOF
+[Unit]
+Description=Docker
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/dockerd
+ExecReload=/bin/kill -s HUP \$MAINPID
+LimitNOFILE=102400
+LimitNPROC=infinity
+LimitCORE=0
+TimeoutStartSec=0
+Delegate=yes
+KillMode=process
+Restart=on-failure
+StartLimitBurst=3
+StartLimitInterval=60s
+[Install]
+WantedBy=multi-user.target
+EOF
+
+启动 docker
+
+systemctl daemon-reload && systemctl start docker && systemctl enable docker
+
+三、单机版本安装
+下载镜像（离线包下载）
+
+docker pull registry.cn-hangzhou.aliyuncs.com/mdpublic/mingdaoyun-community:7.0.1
+
+docker pull registry.cn-hangzhou.aliyuncs.com/mdpublic/mingdaoyun-sc:3.2.0
+
+docker pull registry.cn-hangzhou.aliyuncs.com/mdpublic/mingdaoyun-command:node1018-python36
+
+docker pull registry.cn-hangzhou.aliyuncs.com/mdpublic/mingdaoyun-doc:2.0.0
+
+下载管理器
+
+wget https://pdpublic.mingdao.com/private-deployment/7.0.1/mingdaoyun_private_deployment_captain_linux_amd64.tar.gz
+
+
+创建目录，并解压管理器到新创建的目录下
+
+mkdir /usr/local/MDPrivateDeployment/
+
+tar -zxvf mingdaoyun_private_deployment_captain_linux_amd64.tar.gz -C /usr/local/MDPrivateDeployment/
+
+进入管理器所在目录，启动管理器
+
+cd /usr/local/MDPrivateDeployment/
+
+bash ./service.sh start 
+
+启动成功后在浏览器中通过 http://{服务器IP}:38881 进行访问，完成系统访问地址设置及初始化（初始化过程持续约 5 分钟左右）

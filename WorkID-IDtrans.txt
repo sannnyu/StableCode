@@ -1,0 +1,83 @@
+# ==========================================================
+# 脚本功能：根据映射表，将工作证号命名的照片批量改为身份证号命名
+# ==========================================================
+
+# --- 1. 路径配置 (请修改为你的实际路径) ---
+$mappingFile = "C:\Path\To\mapping.txt"  # 你的映射表文件
+$transDir = "C:\Path\To\trans"         # 专门存放待处理照片的文件夹
+
+# --- 2. 解析映射关系 ---
+$idMap = @{} # Key: 工作证号, Value: 身份证号
+Write-Host "正在加载映射关系..." -ForegroundColor Cyan
+
+if (-not (Test-Path $mappingFile)) {
+    Write-Error "找不到映射文件，请检查路径！"
+    exit
+}
+
+Get-Content $mappingFile | ForEach-Object {
+    $line = $_.Trim()
+    # 正则匹配：行首 18 位身份证，行尾 11 位工作证
+    if ($line -match '^(\d{17}[\dXx]).*?(\d{11})$') {
+        $idCard = $Matches[1]
+        $workerId = $Matches[2]
+        $idMap[$workerId] = $idCard
+    }
+}
+
+Write-Host "加载完成！共有 $($idMap.Count) 组映射记录。`n" -ForegroundColor Green
+
+# --- 3. 执行批量重命名 ---
+$files = Get-ChildItem -Path $transDir -File
+$success = 0
+$failed = 0
+$skipped = 0
+
+foreach ($file in $files) {
+    # 提取文件名中的 11 位工作证号
+    if ($file.BaseName -match '(\d{11})') {
+        $foundWId = $Matches[1]
+        
+        if ($idMap.ContainsKey($foundWId)) {
+            $newID = $idMap[$foundWId]
+            
+            # 【核心修改】：强制统一后缀为 .jpg
+            $newName = "$newID.jpg"
+            $newPath = Join-Path -Path $transDir -ChildPath $newName
+            
+            # 如果名字已经符合要求，跳过
+            if ($file.Name -eq $newName) {
+                $skipped++
+                continue
+            }
+
+            try {
+                if (-not (Test-Path $newPath)) {
+                    Rename-Item -Path $file.FullName -NewName $newName -ErrorAction Stop
+                    Write-Host "[成功] $($file.Name) -> $newName" -ForegroundColor Green
+                    $success++
+                } else {
+                    Write-Warning "[冲突] 目标已存在，跳过: $newName"
+                    $failed++
+                }
+            } catch {
+                Write-Host "[错误] 无法重命名 $($file.Name): $($_.Exception.Message)" -ForegroundColor Red
+                $failed++
+            }
+        } else {
+            Write-Host "[未匹配] TXT中找不到对应身份证: $foundWId ($($file.Name))" -ForegroundColor Yellow
+            $failed++
+        }
+    } else {
+        Write-Host "[忽略] 文件名中未发现11位编号: $($file.Name)" -ForegroundColor Gray
+        $skipped++
+    }
+}
+
+# --- 4. 结果统计 ---
+Write-Host "`n" + ("=" * 30)
+Write-Host "处理完毕！统计如下："
+Write-Host " - 成功重命名: $success" -ForegroundColor Green
+Write-Host " - 失败/冲突: $failed" -ForegroundColor Red
+Write-Host " - 跳过/忽略: $skipped" -ForegroundColor Gray
+Write-Host ("=" * 30)
