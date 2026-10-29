@@ -1,0 +1,45 @@
+Get-ChildItem -File | ForEach-Object { if ($_ -match '(\d{17}[\dXx])') { Rename-Item $_.FullName -NewName "$($Matches[1]).jpg" -ErrorAction SilentlyContinue } }
+
+
+
+# 设置照片所在的根目录
+$targetDir = "C:\Your\Photos\Path"
+
+# 1. 切换到目标目录
+Set-Location -Path $targetDir
+
+# 2. 获取所有文件（过滤掉目录）
+$files = Get-ChildItem -File
+
+foreach ($file in $files) {
+    # 3. 使用正则表达式提取 18 位身份证号
+    # \d{17} 匹配前17位数字，[\dXx] 匹配最后一位（数字或大小写X）
+    if ($file.Name -match '(\d{17}[\dXx])') {
+        
+        $idNumber = $Matches[1]
+        $newName = "$idNumber.jpg"
+        $newPath = Join-Path -Path $targetDir -ChildPath $newName
+
+        # 4. 检查文件名是否已经符合规范，避免重复操作
+        if ($file.Name -eq $newName) {
+            Write-Host "跳过：$($file.Name) 已经是标准格式。" -ForegroundColor Gray
+            continue
+        }
+
+        # 5. 执行重命名
+        if (Test-Path $newPath) {
+            Write-Warning "冲突：目标文件 $newName 已存在，无法重命名 $($file.Name)"
+        } else {
+            try {
+                Rename-Item -Path $file.FullName -NewName $newName -ErrorAction Stop
+                Write-Host "成功：$($file.Name) -> $newName" -ForegroundColor Green
+            } catch {
+                Write-Error "失败：无法重命名 $($file.Name)，原因：$($_.Exception.Message)"
+            }
+        }
+    } else {
+        Write-Host "未匹配：$($file.Name) 中未发现身份证号。" -ForegroundColor Yellow
+    }
+}
+
+Write-Host "`n处理完毕！" -BackgroundColor DarkGreen
